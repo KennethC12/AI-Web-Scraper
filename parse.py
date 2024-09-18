@@ -1,5 +1,4 @@
 import time
-from threading import Thread
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -17,31 +16,17 @@ template = (
 model = OllamaLLM(model="llama3.1")
 
 
-def process_chunk(chunk, parse_description):
-    """
-    Process a single chunk of DOM content with the model.
-    """
-    try:
-        prompt = ChatPromptTemplate.from_template(template)
-        chain = prompt | model
-        response = chain.invoke(
-            {"dom_content": chunk, "parse_description": parse_description}
-        )
-        return response
-    except Exception as e:
-        # Handle model or API errors
-        return f"Error processing chunk: {str(e)}"
-
-
 def parse_with_ollama(
-    dom_chunks,
-    parse_description,
-    batch_size=5,
-    throttle_time=2,
+    dom_chunks, parse_description, batch_size=5, throttle_time=2, progress_callback=None
 ):
     """
-    Process DOM content synchronously and return parsed results as a list.
+    Process DOM content synchronously in batches with ChatPromptTemplate.
+    Returns parsed results as a list.
     """
+    # Initialize ChatPromptTemplate and chain
+    prompt = ChatPromptTemplate.from_template(template)
+    chain = prompt | model
+
     total_chunks = len(dom_chunks)
     parsed_results = []
 
@@ -49,37 +34,31 @@ def parse_with_ollama(
     for i in range(0, total_chunks, batch_size):
         batch = dom_chunks[i : i + batch_size]
 
-        for j, chunk in enumerate(batch):
-            response = process_chunk(chunk, parse_description)
-            parsed_results.append(response)
+        for j, chunk in enumerate(batch, start=1):
+            try:
+                # Process the chunk using the chain
+                response = chain.invoke(
+                    {"dom_content": chunk, "parse_description": parse_description}
+                )
 
-            # Print progress
-            current_chunk_number = i + j + 1
-            progress_percentage = (current_chunk_number / total_chunks) * 100
-            print(
-                f"Processed {current_chunk_number}/{total_chunks} chunks ({progress_percentage:.2f}% complete)"
-            )
+                # Append the response or handle empty responses
+                parsed_results.append(
+                    response if response else "No result for this chunk."
+                )
 
-        # Throttle requests
+            except Exception as e:
+                # Handle errors and append the error message to results
+                parsed_results.append(f"Error processing chunk: {str(e)}")
+
+            # Update progress after processing each chunk
+            if progress_callback:
+                # Calculate progress based on the number of chunks processed
+                progress_percentage = (i + j) / total_chunks
+                progress_callback(progress_percentage)
+
+        # Throttle requests to avoid overloading resources
         if i + batch_size < total_chunks:
             time.sleep(throttle_time)
 
-    return parsed_results
-
-
-def run_parsing_in_thread(
-    dom_chunks,
-    parse_description,
-    batch_size=5,
-    throttle_time=2,
-    output_file="parsed_results.txt",
-):
-    """
-    Runs the parse_with_ollama function in a separate thread to prevent blocking the main thread.
-    """
-    parsing_thread = Thread(
-        target=parse_with_ollama,
-        args=(dom_chunks, parse_description, batch_size, throttle_time, output_file),
-    )
-    parsing_thread.start()
-    print("Parsing has started in a separate thread.")
+    # Return the combined parsed results as a string
+    return "\n".join(parsed_results) if parsed_results else "No results to display."

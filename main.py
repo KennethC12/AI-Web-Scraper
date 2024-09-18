@@ -6,16 +6,9 @@ from scrape import (
     clean_body_content,
     extract_body_content,
 )
-from linkedinscrape import (
-    linkedinscrape_website,
-    extract_body_content,
-    clean_body_content,
-)
-from parse import (
-    parse_with_ollama,
-    process_chunk,
-)  # Ensure these are correctly imported
-from linkedinconnect import linkedin_scrapepages
+from linkedinscrape import linkedinscrape_website
+from parse import parse_with_ollama  # Ensure these are correctly imported
+from linkedinconnect import connect
 
 # Sidebar Navigation for Multi-Page Experience
 page = st.sidebar.selectbox(
@@ -70,33 +63,35 @@ elif page == "Scrape Website":
         if st.button("Parse Content"):
             if parse_description:
                 st.write("Parsing the content...")
-                dom_chunks = split_dom_content(
-                    st.session_state.dom_content
-                )  # Split DOM into chunks
+
+                # Split the DOM content into smaller chunks
+                dom_chunks = split_dom_content(st.session_state.dom_content)
 
                 # Initialize progress indicators
                 progress_bar = st.progress(0)
                 progress_text = st.empty()
 
+                # Progress callback for updating the progress bar
+                def update_progress_bar(progress_percentage):
+                    progress_bar.progress(progress_percentage)
+
                 try:
-                    total_chunks = len(dom_chunks)
-                    parsed_results = []
+                    # Call parse_with_ollama and pass the progress callback
+                    parsed_results = parse_with_ollama(
+                        dom_chunks,
+                        parse_description,
+                        batch_size=5,
+                        throttle_time=2,
+                        progress_callback=update_progress_bar,
+                    )
 
-                    for i, chunk in enumerate(dom_chunks):
-                        response = process_chunk(chunk, parse_description)
-                        parsed_results.append(response)
+                    # Display parsed content once all chunks are processed
+                    if parsed_results:
+                        st.write("Parsing complete.")
+                        st.write(parsed_results)
+                    else:
+                        st.error("Parsing returned no results.")
 
-                        # Update progress
-                        progress_percentage = (i + 1) / total_chunks
-                        progress_bar.progress(progress_percentage)
-                        progress_text.text(f"Processed {i + 1}/{total_chunks} chunks")
-
-                    result = "\n".join(parsed_results)
-                    st.write("Parsing complete.")
-
-                    # Display the parsed content
-                    parsed_result = parse_with_ollama(dom_chunks, parse_description)
-                    st.write(parsed_result)
                 except Exception as e:
                     st.error(f"An error occurred while parsing: {str(e)}")
             else:
@@ -133,7 +128,6 @@ elif page == "Login and Scrape":
                 st.error(f"An error occurred during login: {str(e)}")
                 result = None
 
-            # If scraping succeeds, clean and display content
             if result:
                 body_content = extract_body_content(result)  # Extract body from HTML
                 cleaned_content = clean_body_content(body_content)  # Clean content
@@ -153,44 +147,55 @@ elif page == "Login and Scrape":
             placeholder="Enter your parsing instructions here...",
         )
 
-        # Inside the parsing section
         if st.button("Parse Content"):
             if parse_description:
                 st.write("Parsing the content...")
 
-                # Split DOM into chunks
+                # Split the DOM content into smaller chunks
                 dom_chunks = split_dom_content(st.session_state.dom_content)
 
                 # Initialize progress indicators
                 progress_bar = st.progress(0)
-                progress_text = st.empty()
+
+                # Progress callback for updating the progress bar
+                def update_progress_bar(progress_percentage):
+                    # Ensure the value stays between 0.0 and 1.0
+                    progress_percentage = min(max(progress_percentage, 0.0), 1.0)
+                    progress_bar.progress(progress_percentage)
 
                 try:
-                    total_chunks = len(dom_chunks)
-                    parsed_results = []
+                    # Call parse_with_ollama and pass the progress callback
+                    parsed_results = parse_with_ollama(
+                        dom_chunks,
+                        parse_description,
+                        batch_size=5,
+                        throttle_time=2,
+                        progress_callback=update_progress_bar,
+                    )
 
-                    for i, chunk in enumerate(dom_chunks):
-                        response = process_chunk(chunk, parse_description)
-                        parsed_results.append(response)
+                    # Check if valid parsed results exist
+                    if isinstance(parsed_results, list) and parsed_results:
+                        result = "\n".join(parsed_results)
+                    elif isinstance(parsed_results, str) and parsed_results.strip():
+                        result = parsed_results
+                    else:
+                        st.error("Parsing resulted in no data or empty content.")
 
-                        # Update progress
-                        progress_percentage = (i + 1) / total_chunks
-                        progress_bar.progress(progress_percentage)
-                        progress_text.text(f"Processed {i + 1}/{total_chunks} chunks")
-
+                    # Parsing is complete only when we have valid results
                     st.write("Parsing complete.")
 
-                    # Display the parsed content
-                    parsed_result = parse_with_ollama(dom_chunks, parse_description)
-                    st.write(parsed_result)
+                    # Display the final parsed content
+                    st.write(result)
+
                 except Exception as e:
                     st.error(f"An error occurred while parsing: {str(e)}")
             else:
                 st.error("Please provide a description for what you want to parse.")
 
 
+# Page for LinkedIn Connect
 elif page == "Linkedin Connect":
-    st.title("Linkedin")
+    st.title("LinkedIn Connect")
 
     # URL input field
     url = st.text_input("Enter URL")
@@ -201,85 +206,33 @@ elif page == "Linkedin Connect":
     password = st.text_input("Password", type="password")
 
     num_pages = st.number_input(
-        "Number of pages to scrape", min_value=1, value=1, step=1
+        "Number of pages to process", min_value=1, value=1, step=1
     )
 
-    # Button to start login and scraping
-    if st.button("Login and Scrape"):
+    # Input for note text
+    note_text = st.text_area(
+        "Enter the note to add to the connection request",
+        placeholder="Write a note to include with your connection request...",
+        value="",
+    )
+
+    # Button to start login and connecting
+    if st.button("Login and Connect"):
         if not url or not login_url or not email or not password:
             st.error("URL, login URL, email, and password are required.")
         else:
-            st.write("Logging into LinkedIn and scraping the content...")
+            st.write("Logging into LinkedIn and sending connection requests...")
             try:
-                with st.spinner("Logging in and scraping the website..."):
-                    # Use the linkedin_scrape function from linkedinscrape.py
-                    result = linkedin_scrapepages(
-                        website=url,  # URL to scrape after login
+                with st.spinner("Logging in and sending connection requests..."):
+                    # Use the connect function to send the connection requests
+                    result = connect(
+                        website=url,  # URL to connect after login
                         login_url=login_url,  # Login URL
                         username=email,  # Email for login
                         password=password,  # Password for login
-                        num_pages=num_pages,
+                        num_pages=num_pages,  # Number of pages to process
+                        note_text=note_text,  # Note text for the connection request
                     )
+                    st.success("Connection requests sent successfully!")
             except Exception as e:
-                st.error(f"An error occurred during login: {str(e)}")
-                result = None
-
-            # If scraping succeeds, clean and display content
-            if result:
-                all_cleaned_content = []
-                for html_content in result:
-                    body_content = extract_body_content(html_content)
-                    cleaned_content = clean_body_content(body_content)
-                    all_cleaned_content.append(cleaned_content)
-
-                combined_cleaned_content = "\n".join(all_cleaned_content)
-
-                st.session_state.dom_content = combined_cleaned_content
-                # Display the DOM content in an expandable text area
-                with st.expander("View DOM Content"):
-                    st.text_area("DOM Content", cleaned_content, height=300)
-            else:
-                st.error("Failed to scrape the website.")
-
-    # Parsing section after scraping is complete
-    if "dom_content" in st.session_state:
-        parse_description = st.text_area(
-            "Describe what you want to parse?",
-            value="",
-            placeholder="Enter your parsing instructions here...",
-        )
-
-        # Inside the parsing section
-        if st.button("Parse Content"):
-            if parse_description:
-                st.write("Parsing the content...")
-
-                # Split DOM into chunks
-                dom_chunks = split_dom_content(st.session_state.dom_content)
-
-                # Initialize progress indicators
-                progress_bar = st.progress(0)
-                progress_text = st.empty()
-
-                try:
-                    total_chunks = len(dom_chunks)
-                    parsed_results = []
-
-                    for i, chunk in enumerate(dom_chunks):
-                        response = process_chunk(chunk, parse_description)
-                        parsed_results.append(response)
-
-                        # Update progress
-                        progress_percentage = (i + 1) / total_chunks
-                        progress_bar.progress(progress_percentage)
-                        progress_text.text(f"Processed {i + 1}/{total_chunks} chunks")
-
-                    st.write("Parsing complete.")
-
-                    # Display the parsed content
-                    parsed_result = parse_with_ollama(dom_chunks, parse_description)
-                    st.write(parsed_result)
-                except Exception as e:
-                    st.error(f"An error occurred while parsing: {str(e)}")
-            else:
-                st.error("Please provide a description for what you want to parse.")
+                st.error(f"An error occurred during login or connecting: {str(e)}")

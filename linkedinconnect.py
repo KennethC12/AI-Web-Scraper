@@ -2,20 +2,22 @@ import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from bs4 import BeautifulSoup
+from selenium.common.exceptions import TimeoutException
 import time
 
 
-def linkedin_scrapepages(
-    website, login_url=None, username=None, password=None, num_pages=1, scroll_times=1
+def connect(
+    website,
+    login_url=None,
+    username=None,
+    password=None,
+    num_pages=1,
+    note_text="",
 ):
-    print("Connecting to Scraping Browser without Proxy...")
+    print("Connecting to LinkedIn without Proxy...")
 
     # Initialize the undetected-chromedriver without a proxy
-    driver = uc.Chrome()
-
-    all_page_contents = []  # To store the HTML content of each page
+    driver = uc.Chrome(version_main=128)
 
     try:
         # If login is required, log in first
@@ -50,30 +52,148 @@ def linkedin_scrapepages(
             submit_button.click()
 
             time.sleep(5)  # Wait for login to complete and page to load
+            print("Login successful")
 
         # Navigate to the actual target page after logging in
         driver.get(website)
         print(f"Navigated to target page: {website}")
 
+        # Loop through the specified number of pages
         for page in range(num_pages):
-            # Perform scrolling for dynamic content loading
-            for scroll in range(scroll_times):
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                time.sleep(2)  # Wait for the page to load more content
-                print(f"Scrolled {scroll + 1} times on page {page + 1}.")
+            print(f"Processing page {page + 1} of {num_pages}")
 
-            # Scrape the current page content
-            html = driver.page_source
-            all_page_contents.append(html)
-
-            # Extract body content from the current page
-            body_content = extract_body_content(html)
-            cleaned_content = clean_body_content(body_content)
-            print(f"Scraped page {page + 1} content of length {len(cleaned_content)}")
-
+            connect_buttons = []
             try:
-                # Try to find and click the "Next" button using the provided XPath
-                print("Looking for the 'Next' button...")
+                # Try to find the "Connect" buttons within 10 seconds
+                print("Looking for all 'Connect' buttons...")
+                connect_buttons = WebDriverWait(driver, 10).until(
+                    EC.presence_of_all_elements_located(
+                        (By.XPATH, "//button[contains(@aria-label, 'to connect')]")
+                    )
+                )
+            except TimeoutException:
+                print(
+                    f"No 'Connect' buttons found on page {page + 1}. Attempting to scroll down..."
+                )
+
+                # Scroll down once if no "Connect" buttons are found
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(3)  # Wait for the page to load more content after scrolling
+
+                # Try to find the "Connect" buttons again after scrolling
+                try:
+                    connect_buttons = WebDriverWait(driver, 10).until(
+                        EC.presence_of_all_elements_located(
+                            (By.XPATH, "//button[contains(@aria-label, 'to connect')]")
+                        )
+                    )
+                except TimeoutException:
+                    print(
+                        f"No 'Connect' buttons found after scrolling on page {page + 1}. Moving to next page..."
+                    )
+
+            # If we found "Connect" buttons after scrolling, process them
+            if connect_buttons:
+                print(
+                    f"Found {len(connect_buttons)} 'Connect' buttons on page {page + 1}"
+                )
+
+                # Iterate through each connect button and handle Premium prompt if needed
+                for connect_button in connect_buttons:
+                    try:
+                        connect_button.click()  # Step 1: Click "Connect"
+                        print("Connect button clicked successfully.")
+
+                        time.sleep(2)
+
+                        # Step 2: Click "Add a note" button
+                        print("Looking for the 'Add a note' button...")
+                        add_note_button = WebDriverWait(driver, 5).until(
+                            EC.element_to_be_clickable(
+                                (
+                                    By.XPATH,
+                                    "//button[contains(@aria-label, 'Add a note')]",
+                                )
+                            )
+                        )
+                        add_note_button.click()
+                        print("Add a note button clicked successfully.")
+
+                        time.sleep(2)  # Pause before adding the note
+
+                        # Step 3: Wait for the note text area and add the note
+                        note_textarea = WebDriverWait(driver, 5).until(
+                            EC.presence_of_element_located(
+                                (
+                                    By.XPATH,
+                                    "//textarea[contains(@id, 'custom-message')]",
+                                )
+                            )
+                        )
+                        note_textarea.send_keys(note_text)
+                        print(f"Note added: {note_text}")
+
+                        time.sleep(1)
+
+                        # Step 4: Submit the connection request
+                        send_invitation_button = WebDriverWait(driver, 5).until(
+                            EC.element_to_be_clickable(
+                                (
+                                    By.XPATH,
+                                    "//button[contains(@aria-label, 'Send invitation')]",
+                                )
+                            )
+                        )
+                        send_invitation_button.click()
+                        print("Invitation with note sent successfully.")
+
+                    except TimeoutException:
+                        # Step 5: Handle LinkedIn Premium prompt if it appears
+                        print("Premium prompt detected, dismissing it...")
+                        premium_prompt = WebDriverWait(driver, 5).until(
+                            EC.element_to_be_clickable(
+                                (By.XPATH, "//button[@aria-label='Dismiss']")
+                            )
+                        )
+                        premium_prompt.click()
+                        print("Premium prompt dismissed.")
+
+                        time.sleep(2)  # Wait for the modal to close
+
+                        # Step 6: Click "Connect" again after dismissing the Premium prompt
+                        print(
+                            "Clicking 'Connect' button again after dismissing Premium prompt."
+                        )
+                        connect_button.click()
+
+                        time.sleep(2)
+
+                        # Step 7: Click "Send without a note"
+                        try:
+                            send_without_note_button = WebDriverWait(driver, 5).until(
+                                EC.element_to_be_clickable(
+                                    (
+                                        By.XPATH,
+                                        "//button[@aria-label='Send without a note']",
+                                    )
+                                )
+                            )
+                            send_without_note_button.click()
+                            print(
+                                "Sent connection without a note after re-clicking Connect."
+                            )
+                        except TimeoutException:
+                            print(
+                                "Could not find the 'Send without a note' button after re-clicking Connect."
+                            )
+
+                    except Exception as e:
+                        print(f"An error occurred while trying to connect: {str(e)}")
+                        continue  # Continue with the next "Connect" button
+
+            # After processing the page, move to the next page
+            print("Looking for the 'Next' button...")
+            try:
                 next_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable(
                         (
@@ -85,9 +205,8 @@ def linkedin_scrapepages(
                 print("Next button found. Clicking...")
                 next_button.click()
 
-                time.sleep(3)  # Wait for the next page to load
+                time.sleep(5)  # Wait for the next page to load
             except TimeoutException:
-                # If no "Next" button is found, break the loop
                 print("No more 'Next' button found. Reached the final page.")
                 break
             except Exception as e:
@@ -96,54 +215,7 @@ def linkedin_scrapepages(
                 )
                 break
 
-        return all_page_contents  # Return the HTML content of all pages
-
     except TimeoutException as e:
-        print(f"Timeout while waiting for element: {str(e)}")
-        driver.save_screenshot("error_screenshot.png")
-        raise Exception(f"TimeoutException: {str(e)}")
+        print(f"An error occurred during login: {str(e)}")
 
-    except NoSuchElementException as e:
-        print(f"Element not found: {str(e)}")
-        driver.save_screenshot("error_screenshot.png")
-        raise Exception(f"NoSuchElementException: {str(e)}")
-
-    except Exception as e:
-        print(f"An unexpected error occurred: {str(e)}")
-        driver.save_screenshot("error_screenshot.png")
-        raise Exception(f"Exception: {str(e)}")
-
-    finally:
-        driver.quit()  # Close the browser
-
-
-def extract_body_content(html_content):
-    soup = BeautifulSoup(html_content, "html.parser")
-    body_content = soup.body
-    if body_content:
-        return str(body_content)
-    return ""
-
-
-def clean_body_content(body_content):
-    soup = BeautifulSoup(body_content, "html.parser")
-
-    for script_or_style in soup(["script", "style"]):
-        script_or_style.extract()
-
-    # Get text or further process the content
-    cleaned_content = soup.get_text(separator="\n")
-    cleaned_content = "\n".join(
-        line.strip() for line in cleaned_content.splitlines() if line.strip()
-    )
-
-    return cleaned_content
-
-
-def split_dom_content(dom_content, max_length=6000):
-    return [
-        dom_content[i : i + max_length] for i in range(0, len(dom_content), max_length)
-    ]
-
-
-def connect(): ...
+    return driver  # Return the driver to allow further actions

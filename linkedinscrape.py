@@ -12,7 +12,7 @@ def linkedinscrape_website(website, login_url=None, username=None, password=None
     print("Connecting to Scraping Browser without Proxy...")
 
     # Initialize the undetected-chromedriver without a proxy
-    driver = uc.Chrome()
+    driver = uc.Chrome(version_main=128)
 
     try:
         # If login is required, go to the login page first
