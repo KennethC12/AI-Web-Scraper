@@ -12,7 +12,8 @@ def connect(
     username=None,
     password=None,
     num_pages=1,
-    note_text="",
+    add_note=False,  # Checkbox control to decide if note should be added
+    note_text=None,  # Changed default to None to handle no note scenario
 ):
     print("Connecting to LinkedIn without Proxy...")
 
@@ -98,7 +99,7 @@ def connect(
                     f"Found {len(connect_buttons)} 'Connect' buttons on page {page + 1}"
                 )
 
-                # Iterate through each connect button and handle Premium prompt if needed
+                # Iterate through each connect button and handle the connection
                 for connect_button in connect_buttons:
                     try:
                         connect_button.click()  # Step 1: Click "Connect"
@@ -106,90 +107,66 @@ def connect(
 
                         time.sleep(2)
 
-                        # Step 2: Click "Add a note" button
-                        print("Looking for the 'Add a note' button...")
-                        add_note_button = WebDriverWait(driver, 5).until(
-                            EC.element_to_be_clickable(
-                                (
-                                    By.XPATH,
-                                    "//button[contains(@aria-label, 'Add a note')]",
+                        # Handle sending the connection based on whether to add a note or not
+                        if add_note and note_text:  # Send connection with a note
+                            print("Adding a note to the connection request...")
+
+                            # Step 2: Click "Add a note" button
+                            add_note_button = WebDriverWait(driver, 5).until(
+                                EC.element_to_be_clickable(
+                                    (
+                                        By.XPATH,
+                                        "//button[contains(@aria-label, 'Add a note')]",
+                                    )
                                 )
                             )
-                        )
-                        add_note_button.click()
-                        print("Add a note button clicked successfully.")
+                            add_note_button.click()
+                            print("Add a note button clicked successfully.")
 
-                        time.sleep(2)  # Pause before adding the note
+                            time.sleep(2)  # Pause before adding the note
 
-                        # Step 3: Wait for the note text area and add the note
-                        note_textarea = WebDriverWait(driver, 5).until(
-                            EC.presence_of_element_located(
-                                (
-                                    By.XPATH,
-                                    "//textarea[contains(@id, 'custom-message')]",
+                            # Step 3: Wait for the note text area and add the note
+                            note_textarea = WebDriverWait(driver, 5).until(
+                                EC.presence_of_element_located(
+                                    (
+                                        By.XPATH,
+                                        "//textarea[contains(@id, 'custom-message')]",
+                                    )
                                 )
                             )
-                        )
-                        note_textarea.send_keys(note_text)
-                        print(f"Note added: {note_text}")
+                            note_textarea.send_keys(note_text)
+                            print(f"Note added: {note_text}")
 
-                        time.sleep(1)
+                            time.sleep(1)
 
-                        # Step 4: Submit the connection request
-                        send_invitation_button = WebDriverWait(driver, 5).until(
-                            EC.element_to_be_clickable(
-                                (
-                                    By.XPATH,
-                                    "//button[contains(@aria-label, 'Send invitation')]",
+                            # Step 4: Submit the connection request with the note
+                            send_invitation_button = WebDriverWait(driver, 5).until(
+                                EC.element_to_be_clickable(
+                                    (
+                                        By.XPATH,
+                                        "//button[contains(@aria-label, 'Send invitation')]",
+                                    )
                                 )
                             )
-                        )
-                        send_invitation_button.click()
-                        print("Invitation with note sent successfully.")
+                            send_invitation_button.click()
+                            print("Invitation with note sent successfully.")
 
-                    except TimeoutException:
-                        # Step 5: Handle LinkedIn Premium prompt if it appears
-                        print("Premium prompt detected, dismissing it...")
-                        premium_prompt = WebDriverWait(driver, 5).until(
-                            EC.element_to_be_clickable(
-                                (By.XPATH, "//button[@aria-label='Dismiss']")
-                            )
-                        )
-                        premium_prompt.click()
-                        print("Premium prompt dismissed.")
-
-                        time.sleep(2)  # Wait for the modal to close
-
-                        # Step 6: Click "Connect" again after dismissing the Premium prompt
-                        print(
-                            "Clicking 'Connect' button again after dismissing Premium prompt."
-                        )
-                        connect_button.click()
-
-                        time.sleep(2)
-
-                        # Step 7: Click "Send without a note"
-                        try:
+                        else:  # Send connection without a note
+                            print("Sending connection without a note.")
                             send_without_note_button = WebDriverWait(driver, 5).until(
                                 EC.element_to_be_clickable(
                                     (
                                         By.XPATH,
-                                        "//button[@aria-label='Send without a note']",
+                                        "//button[contains(@aria-label, 'Send without a note') and contains(@class, 'artdeco-button--primary')]",
                                     )
                                 )
                             )
                             send_without_note_button.click()
-                            print(
-                                "Sent connection without a note after re-clicking Connect."
-                            )
-                        except TimeoutException:
-                            print(
-                                "Could not find the 'Send without a note' button after re-clicking Connect."
-                            )
+                            print("Invitation without note sent successfully.")
 
-                    except Exception as e:
-                        print(f"An error occurred while trying to connect: {str(e)}")
-                        continue  # Continue with the next "Connect" button
+                    except TimeoutException:
+                        print("Premium prompt detected or other issue occurred.")
+                        continue  # Skip to the next connection button
 
             # After processing the page, move to the next page
             print("Looking for the 'Next' button...")
@@ -217,5 +194,10 @@ def connect(
 
     except TimeoutException as e:
         print(f"An error occurred during login: {str(e)}")
+
+    finally:
+        # Ensure the driver is closed after everything is done
+        print("Closing the browser...")
+        driver.quit()
 
     return driver  # Return the driver to allow further actions

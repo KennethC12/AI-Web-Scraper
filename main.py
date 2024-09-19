@@ -193,7 +193,6 @@ elif page == "Login and Scrape":
                 st.error("Please provide a description for what you want to parse.")
 
 
-# Page for LinkedIn Connect
 elif page == "Linkedin Connect":
     st.title("LinkedIn Connect")
 
@@ -209,12 +208,17 @@ elif page == "Linkedin Connect":
         "Number of pages to process", min_value=1, value=1, step=1
     )
 
-    # Input for note text
-    note_text = st.text_area(
-        "Enter the note to add to the connection request",
-        placeholder="Write a note to include with your connection request...",
-        value="",
-    )
+    # Checkbox to choose if note should be added
+    add_note = st.checkbox("Add a note to the connection request?")
+
+    # Input for note text (only appears if checkbox is checked)
+    note_text = ""
+    if add_note:
+        note_text = st.text_area(
+            "Enter the note to add to the connection request",
+            placeholder="Write a note to include with your connection request...",
+            value="",
+        )
 
     # Button to start login and connecting
     if st.button("Login and Connect"):
@@ -231,7 +235,8 @@ elif page == "Linkedin Connect":
                         username=email,  # Email for login
                         password=password,  # Password for login
                         num_pages=num_pages,  # Number of pages to process
-                        note_text=note_text,  # Note text for the connection request
+                        add_note=add_note,  # Whether to add a note or not
+                        note_text=note_text if add_note else None,  # Note text or None
                     )
                     st.success("Connection requests sent successfully!")
             except Exception as e:
