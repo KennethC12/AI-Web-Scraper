@@ -192,7 +192,7 @@ elif page == "Login and Scrape":
             else:
                 st.error("Please provide a description for what you want to parse.")
 
-
+# Linkedin Connect Page
 elif page == "Linkedin Connect":
     st.title("LinkedIn Connect")
 

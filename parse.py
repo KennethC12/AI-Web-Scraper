@@ -2,7 +2,10 @@ import time
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import ChatPromptTemplate
 
-# Static Prompt Template
+# DOM means Document Object Model
+
+
+# Static Prompt Template for Ollama
 template = (
     "You are tasked with extracting specific information from the following text content: {dom_content}. "
     "Please follow these instructions carefully: \n\n"
@@ -16,17 +19,24 @@ template = (
 model = OllamaLLM(model="llama3.1")
 
 
+# Function to parse with Ollama
 def parse_with_ollama(
-    dom_chunks, parse_description, batch_size=5, throttle_time=2, progress_callback=None
+    dom_chunks,
+    parse_description,
+    batch_size=5,
+    throttle_time=2,
+    progress_callback=None,  # Added progress_callback
 ):
     """
     Process DOM content synchronously in batches with ChatPromptTemplate.
     Returns parsed results as a list.
     """
     # Initialize ChatPromptTemplate and chain
-    prompt = ChatPromptTemplate.from_template(template)
-    chain = prompt | model
-
+    prompt = ChatPromptTemplate.from_template(
+        template
+    )  # Updated to use ChatPromptTemplate
+    chain = prompt | model  # Updated to use ChatPromptTemplate
+    # Initialize progress indicators
     total_chunks = len(dom_chunks)
     parsed_results = []
 
